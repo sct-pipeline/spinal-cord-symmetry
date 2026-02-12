@@ -7,6 +7,7 @@ import sys, os
 import argparse
 from functions_sym_rot import *
 import csv
+import nibabel as nib
 
 
 def get_parser():
@@ -38,6 +39,12 @@ def get_parser():
         help="Output folder for test results, e.g. path/to/output/folder"
     )
     parser.add_argument(
+        "-discs",
+        type=str,
+        required=False,
+        help="Output folder for test results, e.g. path/to/output/folder"
+    )
+    parser.add_argument(
         "-qc",
         type=str,
         required=False,
@@ -54,6 +61,11 @@ def main(args=None):
     fname_image = arguments.i
     fname_seg = arguments.iseg
     sct_path = arguments.sct_dir
+    fname_discs = arguments.discs
+    if arguments.discs:
+        fname_discs = arguments.discs
+    else:
+        fname_discs = None
     if arguments.qc:
         path_qc = arguments.qc
         # creating qc dir if it does not exist
@@ -69,7 +81,7 @@ def main(args=None):
 
     fname_seg_template = os.path.join(sct_path, 'data/PAM50/template/PAM50_cord.nii.gz')
 
-    sct.printv("        Python processing file : " + fname_image + " with seg : " + fname_seg)
+    print("Python processing file : " + fname_image + " with seg : " + fname_seg)
 
     # Determining contrast :
     if ("T1w" in fname_image) or ("t1w" in fname_image) or ("MToff" in fname_image):
@@ -82,32 +94,34 @@ def main(args=None):
         contrast, contrast_label = "t2s", "t2"
         fname_image_template = os.path.join(sct_path, "data/PAM50/template/PAM50_t2s.nii.gz")
     else:
-        sct.printv("Contrast not supported yet for file : " + fname_image)
+        print("Contrast not supported yet for file : " + fname_image)
         return
 
     # Labelling vertebrae :
-    os.system(
-        f'sct_label_vertebrae -i {fname_image} -s {fname_seg} -c {contrast_label} -ofolder {output_dir} -v 0'
-    )
-    label_max = np.max(Image(output_dir + "/" + (fname_seg.split("/")[-1]).split(".nii.gz")[0] + "_labeled.nii.gz").data)
-    os.system(
-        f'sct_label_utils -i {output_dir}/{(fname_seg.split("/")[-1]).split(".nii.gz")[0]}_labeled.nii.gz -vert-body 1,{int(label_max)} -o {output_dir}/{(fname_seg.split("/")[-1]).split(".nii.gz")[0]}_indiv_labels.nii.gz -v 0'
-    )
+    if fname_discs:
+        # Copying discs file in output dir
+        os.system(f'cp {fname_discs} {output_dir}')
+    else:
+        # Label discs:
+        os.system(
+            f'sct_label_vertebrae -i {fname_image} -s {fname_seg} -c {contrast_label} -ofolder {output_dir} -v 0'
+        )
+        fname_discs = output_dir + "/" + (fname_seg.split("/")[-1]).split(".nii.gz")[0] + "_labeled_discs.nii.gz" ## TODO: validate this name
 
     # Applying same process but for different methods :
 
     for method in methods:
 
-        sct.printv("\n\n Registration with " + method)
+        print("\n\n Registration with " + method)
 
         # Registration
         if method == "NoRot":
             os.system(
-                f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -l {output_dir}/{(fname_seg.split("/")[-1]).split(".nii.gz")[0]}_indiv_labels.nii.gz -ofolder {output_dir} -param "step=1,type=seg,algo=centermass,poly=0,slicewise=1" -v 0 -qc {path_qc}'
+                f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -ldisc {fname_discs} -ofolder {output_dir} -param "step=1,type=seg,algo=centermass,poly=0,slicewise=1" -v 0 -qc {path_qc}'
             )
         else:
             os.system(
-                f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -l {output_dir}/{(fname_seg.split("/")[-1]).split(".nii.gz")[0]}_indiv_labels.nii.gz -ofolder {output_dir} -param "step=1,type=seg,algo=centermassrot,poly=0,slicewise=1,rot_method={method}" -v 0 -qc {path_qc}'
+                f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -ldisc {fname_discs} -ofolder {output_dir} -param "step=1,type=seg,algo=centermassrot,poly=0,slicewise=1,rot_method={method}" -v 0 -qc {path_qc}'
             )
 
         # Applying warping field to segmentation
@@ -119,8 +133,9 @@ def main(args=None):
         )
 
         # Opening registered segmentation
-        data_seg_reg = Image(output_dir + "/" + (fname_seg.split("/")[-1]).split(".nii.gz")[0] + "_reg_tresh.nii.gz").data
-        data_seg_template = Image(fname_seg_template).data
+        fname_seg_reg = output_dir + "/" + (fname_seg.split("/")[-1]).split(".nii.gz")[0] + "_reg_tresh.nii.gz"
+        data_seg_reg = nib.load(fname_seg_reg).get_fdata()
+        data_seg_template = nib.load(fname_seg_template).get_fdata()
         min_z = np.min(np.nonzero(data_seg_reg)[2])
         max_z = np.max(np.nonzero(data_seg_reg)[2])
 
