@@ -5,61 +5,54 @@
 
 from __future__ import division, absolute_import
 import sys, os
-import sct_utils as sct
-from msct_parser import Parser
+import argparse
 from nicolas_scripts.functions_sym_rot import *
-from spinalcordtoolbox.reports.qc import generate_qc
 import csv
+import nibabel as nib
+import numpy as np
 import time
 import math
 from scipy.ndimage.filters import gaussian_filter1d
 
 def get_parser():
-
-    parser = Parser(__file__)
-    parser.usage.set_description('Script to process a MRI image with its segmentation, blablabla what does this script do')
-    parser.add_option(name="-i",
-                      type_value="file",
-                      description="File input",
-                      mandatory=True,
-                      example="/home/data/cool_T2_MRI.nii.gz")
-    parser.add_option(name="-iseg",
-                      type_value="file",
-                      description="Segmentation of the input file",
-                      mandatory=True,
-                      example="/home/data/cool_T2_MRI_seg_manual.nii.gz")
-    parser.add_option(name="-o",
-                      type_value="folder",
-                      description="output folder for test results",
-                      mandatory=False,
-                      example="path/to/output/folder")
-    parser.add_option(name='-qc',
-                      type_value='folder_creation',
-                      description='The path where the quality control generated content will be saved',
-                      mandatory=False)
+    parser = argparse.ArgumentParser(description='Script to process a MRI image with its segmentation.')
+    parser.add_argument("-i",
+                        type=str,
+                        required=True,
+                        help="File input, e.g. /home/data/cool_T2_MRI.nii.gz")
+    parser.add_argument("-iseg",
+                        type=str,
+                        required=True,
+                        help="Segmentation of the input file, e.g. /home/data/cool_T2_MRI_seg_manual.nii.gz")
+    parser.add_argument("-o",
+                        type=str,
+                        required=False,
+                        help="Output folder for test results, e.g. path/to/output/folder")
+    parser.add_argument("-qc",
+                        type=str,
+                        required=False,
+                        help="The path where the quality control generated content will be saved")
 
     return parser
 
 
 def main(args=None):
 
-    #TODO define filenames
-
     # Parser :
     if not args:
         args = sys.argv[1:]
     parser = get_parser()
-    arguments = parser.parse(args)
+    arguments = parser.parse_args()
     cwd = os.getcwd()
-    fname_image = arguments['-i']
-    fname_seg = arguments['-iseg']
-    if '-qc' in arguments:
-        path_qc = arguments['-qc']
+    fname_image = arguments.i
+    fname_seg = arguments.iseg
+    if arguments.qc:
+        path_qc = arguments.qc
         # creating qc dir if it does not exist
         if not os.path.isdir(path_qc):
             os.mkdir(path_qc)
-    if '-o' in arguments:
-        output_dir = arguments['-o']
+    if arguments.o:
+        output_dir = arguments.o
     else:
         output_dir = os.getcwd()
 
@@ -67,16 +60,18 @@ def main(args=None):
 
     sub_and_sequence = (fname_image.split("/")[-1]).split(".nii.gz")[0]
 
-    image_object = Image(fname_image).change_orientation("LPI")
-    seg_object = Image(fname_seg).change_orientation("LPI")
-
+    #image_object = Image(fname_image).change_orientation("LPI")
     fname_image_output = output_dir + "/" + sub_and_sequence + ".nii.gz"
+    os.system(f'sct_image -i {fname_image} -set-rorient LPI -o {fname_image_output}')
+    #seg_object = Image(fname_seg).change_orientation("LPI")
+
     fname_seg_output = output_dir + "/" + sub_and_sequence + "_seg.nii.gz"
+    os.system(f'sct_image -i {fname_seg} -set-rorient LPI -o {fname_seg_output}')
+    # Read with nibabel to have data with nibabel:
+    data_image = nib.load(fname_image_output).get_fdata()
+    data_seg = nib.load(fname_seg_output).get_fdata()
 
-    data_image = image_object.data
-    data_seg = seg_object.data
-
-    nx, ny, nz, nt, px, py, pz, pt = seg_object.dim
+    nx, ny, nz = data_seg.shape
 
     min_z = np.min(np.nonzero(data_seg)[2])
     max_z = np.max(np.nonzero(data_seg)[2])
@@ -136,9 +131,9 @@ def main(args=None):
         sct.printv("Max angle is : " + str(max(angles) * 180/pi) + ", min is : " + str(min(angles) * 180/pi) + " and mean is : " + str(np.mean(angles) * 180/pi))
 
         fname_axes = output_dir + "/" + sub_and_sequence + "_axes_" + method + ".nii.gz"
-        Image(axes_image, hdr=image_object.hdr).save(fname_axes)
-        image_object.save(fname_image_output)
-        seg_object.save(fname_seg_output)
+        nib.save(nib.Nifti1Image(axes_image, nib.load(fname_image_output).affine, nib.load(fname_image_output).header), fname_axes)
+        nib.save(nib.Nifti1Image(data_image, nib.load(fname_image_output).affine, nib.load(fname_image_output).header), fname_image_output)
+        nib.save(nib.Nifti1Image(data_seg, nib.load(fname_seg_output).affine, nib.load(fname_seg_output).header), fname_seg_output)
 
         # if method is "pca":
         #     cmap = 'PRGn'
@@ -159,9 +154,9 @@ def main(args=None):
         angles_qc[:] = np.nan
         angles_qc[min_z:max_z] = -angles_smoothed
 
-        generate_qc(fname_in1=fname_image_output, fname_seg=fname_seg_output, angle_line=angles_qc[::-1], args=[method], path_qc=path_qc, dataset=None, subject=None, process="rotation")
-
-    sct.printv("fsleyes " + fname_image_output + " " + fname_seg_output + " -cm red" + " " + output_dir + "/" + sub_and_sequence + "_axes_pca.nii.gz -cm blue " + output_dir + "/" + sub_and_sequence + "_axes_hog.nii.gz -cm green " + output_dir + "/" + sub_and_sequence + "_axes_auto.nii.gz -cm yellow", type='info')
+        #generate_qc(fname_in1=fname_image_output, fname_seg=fname_seg_output, angle_line=angles_qc[::-1], args=[method], path_qc=path_qc, dataset=None, subject=None, process="rotation")
+        #os.system(f'sc_qc  -i fname_image_output {fname_image_output} -qc {path_qc}')
+    print("fsleyes " + fname_image_output + " " + fname_seg_output + " -cm red" + " " + output_dir + "/" + sub_and_sequence + "_axes_pca.nii.gz -cm blue " + output_dir + "/" + sub_and_sequence + "_axes_hog.nii.gz -cm green " + output_dir + "/" + sub_and_sequence + "_axes_auto.nii.gz -cm yellow", type='info')
     # fsleyes /home/nicolas/unf_test/unf_spineGeneric/sub-01/anat/sub-01_T1w.nii.gz /home/nicolas/test_single_rot/sub-01_T1w_axes_pca.nii.gz -cm blue /home/nicolas/test_single_rot/sub-01_T1w_axes_hog.nii.gz -cm green
 
 def memory_limit():

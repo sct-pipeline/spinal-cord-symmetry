@@ -3,8 +3,7 @@
 # Script that do some cleaning in the output folder and agregate metrics, then plots nice graphs
 
 import sys, os
-import sct_utils as sct
-from msct_parser import Parser
+import argparse
 import shutil
 import fnmatch
 import csv
@@ -49,7 +48,7 @@ def main(args=None):
             filename_hog = os.path.join(root, filename_NoRot.replace("NoRot", "hog"))
             filename_auto = os.path.join(root, filename_NoRot.replace("NoRot", "auto"))
             if not (os.path.isfile(filename_pca) and os.path.isfile(filename_hog) and os.path.isfile(filename_auto)):
-                sct.printv("4 csv files not found for file : " + filename_NoRot)
+                print("4 csv files not found for file : " + filename_NoRot)
                 continue  # this block makes sure that there is csv file for the 4 methods
 
             # Open and verify presence of all metrics
@@ -57,25 +56,25 @@ def main(args=None):
                 reader = csv.reader(csvfile)
                 metric_dic_NoRot = {rows[0]: float(rows[1]) for rows in reader}
                 if len(metric_dic_NoRot) != len(metrics):
-                    sct.printv("all Metrics not present in csv : " + filename_NoRot)
+                    print("all Metrics not present in csv : " + filename_NoRot)
                     continue
             with open(os.path.join(root, filename_pca), 'r') as csvfile:
                 reader = csv.reader(csvfile)
                 metric_dic_pca = {rows[0]: float(rows[1]) for rows in reader}
                 if len(metric_dic_pca) != len(metrics):
-                    sct.printv("all Metrics not present in csv : " + filename_pca)
+                    print("all Metrics not present in csv : " + filename_pca)
                     continue
             with open(os.path.join(root, filename_hog), 'r') as csvfile:
                 reader = csv.reader(csvfile)
                 metric_dic_hog = {rows[0]: float(rows[1]) for rows in reader}
                 if len(metric_dic_hog) != len(metrics):
-                    sct.printv("all Metrics not present in csv : " + filename_hog)
+                    print("all Metrics not present in csv : " + filename_hog)
                     continue
             with open(os.path.join(root, filename_auto), 'r') as csvfile:
                 reader = csv.reader(csvfile)
                 metric_dic_auto = {rows[0]: float(rows[1]) for rows in reader}
                 if len(metric_dic_auto) != len(metrics):
-                    sct.printv("all Metrics not present in csv : " + filename_hog)
+                    print("all Metrics not present in csv : " + filename_hog)
                     continue
 
             # Now append the metrics to the general dic, if program arrives at this step it means that the all .csv exist and have the all metrics inside
@@ -130,6 +129,5 @@ def main(args=None):
 
 
 if __name__ == "__main__":
-    sct.init_sct()
     # call main function
     main()
