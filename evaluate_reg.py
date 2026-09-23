@@ -77,7 +77,7 @@ def main(args=None):
         if not os.path.isdir(output_dir):
             os.mkdir(output_dir)
 
-    methods = ["NoRot", "pca", "hog", "auto"]
+    methods = ["NoRot", "pca", "hog", "pcahog"]
 
     fname_seg_template = os.path.join(sct_path, 'data/PAM50/template/PAM50_cord.nii.gz')
 
@@ -120,8 +120,12 @@ def main(args=None):
                 f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -ldisc {fname_discs} -ofolder {output_dir} -param "step=1,type=seg,algo=centermass,poly=0,slicewise=1" -v 0 -qc {path_qc}'
             )
         else:
+            if method == "hog" or method == "pcahog":
+                type_im="imseg"
+            else:
+                type_im="seg"
             os.system(
-                f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -ldisc {fname_discs} -ofolder {output_dir} -param "step=1,type=seg,algo=centermassrot,poly=0,slicewise=1,rot_method={method}" -v 0 -qc {path_qc}'
+                f'sct_register_to_template -i {fname_image} -s {fname_seg} -c {contrast} -ldisc {fname_discs} -ofolder {output_dir} -param "step=1,type={type_im},algo=centermassrot,poly=0,slicewise=1,rot_method={method}" -v 0 -qc {path_qc}'
             )
 
         # Applying warping field to segmentation
@@ -146,6 +150,18 @@ def main(args=None):
         for z in range(min_z, max_z):
             dice_slice.append(compute_similarity_metric(data_seg_reg[:, :, z], data_seg_template[:, :, z], metric="Dice"))
 
+        hausdorff_slice = []
+        #hausdorff_glob = compute_similarity_metric(data_seg_reg[:, :, min_z:max_z], data_seg_template[:, :, min_z:max_z], metric="Hausdorff")
+        hausdorff_glob = 0
+        for z in range(min_z, max_z):
+            hausdorff_slice.append(compute_similarity_metric(data_seg_reg[:, :, z], data_seg_template[:, :, z], metric="Hausdorff"))
+        
+        jacquard_distance_slice = []
+        jacquard_distance_glob = compute_similarity_metric(data_seg_reg[:, :, min_z:max_z], data_seg_template[:, :, min_z:max_z], metric="Jaccard")
+
+        for z in range(min_z, max_z):
+            jacquard_distance_slice.append(compute_similarity_metric(data_seg_reg[:, :, z], data_seg_template[:, :, z], metric="Jaccard"))
+
         # Writing out metrics in csv files
         cwd = os.getcwd()
         os.chdir(output_dir)
@@ -157,6 +173,25 @@ def main(args=None):
             filewriter.writerow(["dice_min", min(dice_slice)])
             filewriter.writerow(["dice_max", max(dice_slice)])
             filewriter.writerow(["dice_std", np.std(dice_slice)])
+        
+        with open((fname_image.split("/")[-1]).split(".nii")[0] + "_hausdorff_" + method + ".csv", 'w') as csvfile:
+            filewriter = csv.writer(csvfile, delimiter=',',
+                                    quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            filewriter.writerow(["hausdorff_global", hausdorff_glob])
+            filewriter.writerow(["hausdorff_mean", np.mean(hausdorff_slice)])
+            filewriter.writerow(["hausdorff_min", min(hausdorff_slice)])
+            filewriter.writerow(["hausdorff_max", max(hausdorff_slice)])
+            filewriter.writerow(["hausdorff_std", np.std(hausdorff_slice)])
+        
+        with open((fname_image.split("/")[-1]).split(".nii")[0] + "_jaccard_" + method + ".csv", 'w') as csvfile:
+            filewriter = csv.writer(csvfile, delimiter=',',
+                                    quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            filewriter.writerow(["jaccard_global", jacquard_distance_glob])
+            filewriter.writerow(["jaccard_mean", np.mean(jacquard_distance_slice)])
+            filewriter.writerow(["jaccard_min", min(jacquard_distance_slice)])
+            filewriter.writerow(["jaccard_max", max(jacquard_distance_slice)])
+            filewriter.writerow(["jaccard_std", np.std(jacquard_distance_slice)])
+        
         os.chdir(cwd)
 
         # generate_qc(fname_in1=fname_image, fname_in2=output_dir + "/template2anat.nii.gz", fname_seg=fname_seg, args=args,

@@ -345,16 +345,32 @@ def gradient_orientation_histogram(image, nb_bin, grad_ksize=123456789, seg_weig
 
 
 def compute_similarity_metric(array1, array2, metric="Dice"):
+    if metric == "Dice":
+        if array1.shape != array2.shape:
+            raise Exception("The 2 image do not gave the same dimension")
 
-    if array1.shape != array2.shape:
-        raise Exception("The 2 image do not gave the same dimension")
+        if (array1 > 0).sum() + (array2 > 0).sum() == 0:
+            dice_coeff = 1
+        else:
+            dice_coeff = np.true_divide(2*(np.logical_and(array1, array2) > 0).sum(), (array1 > 0).sum() + (array2 > 0).sum())
 
-    if (array1 > 0).sum() + (array2 > 0).sum() == 0:
-        dice_coeff = 1
-    else:
-        dice_coeff = np.true_divide(2*(np.logical_and(array1, array2) > 0).sum(), (array1 > 0).sum() + (array2 > 0).sum())
-
-    return dice_coeff
+        return dice_coeff
+    elif metric == "Hausdorff":
+        from scipy.spatial.distance import directed_hausdorff
+        # do it for 2d and 3D
+        hausdorff_dist = max(directed_hausdorff(array1, array2)[0], directed_hausdorff(array2, array1)[0])
+        return hausdorff_dist
+    elif metric == "Jaccard":
+        intersection = np.logical_and(array1, array2).sum()
+        union = np.logical_or(array1, array2).sum()
+        if union == 0:
+            jaccard_index = 1.0
+        else:
+            jaccard_index = intersection / union
+        return jaccard_index
+        # Implement Jaccard distance calculation here
+        pass
+    
 
 def generate_2Dimage_line(image, x0, y0, angle, value=0):
 
